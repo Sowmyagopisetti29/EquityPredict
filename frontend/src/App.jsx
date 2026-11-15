@@ -11,7 +11,7 @@ import {
 } from 'recharts';
 import './App.css';
 
-const API_URL = 'http://127.0.0.1:8000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 function getSignal(returnPercent) {
   if (returnPercent > 1) return 'BUY';
@@ -33,6 +33,7 @@ function App() {
 
   const [evaluation, setEvaluation] = useState(null);
 
+  // Predict a single stock
   const handlePredict = async () => {
     const selectedSymbol = symbol.trim().toUpperCase();
 
@@ -61,6 +62,7 @@ function App() {
       }
 
       setPrediction(predictionData);
+      setEvaluation(predictionData.model_evaluation || null);
 
       const historyResponse = await fetch(
         `${API_URL}/stock/${selectedSymbol}`
@@ -75,7 +77,6 @@ function App() {
       }
 
       setHistory(historyData.history || []);
-      setEvaluation(predictionData.evaluation || null);
 
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.');
@@ -84,6 +85,7 @@ function App() {
     }
   };
 
+  // Compare multiple stocks
   const handleCompare = async () => {
     const symbols = multipleSymbols
       .split(',')
@@ -142,6 +144,7 @@ function App() {
     }
   };
 
+  // Download comparison results as CSV
   const downloadCSV = () => {
     if (comparison.length === 0) return;
 
@@ -175,7 +178,7 @@ function App() {
     const link = document.createElement('a');
 
     link.href = url;
-    link.download = 'StockSenseAI_Report.csv';
+    link.download = 'EquityPredict_Report.csv';
     link.click();
 
     URL.revokeObjectURL(url);
@@ -183,6 +186,7 @@ function App() {
 
   const bestStock = comparison.length > 0 ? comparison[0] : null;
 
+  // Calculate chart boundaries
   const chartPrices = history
     .map((item) => Number(item.Close))
     .filter((price) => Number.isFinite(price));
@@ -197,6 +201,7 @@ function App() {
 
   const chartMargin = Math.max((maxPrice - minPrice) * 0.1, 2);
 
+  // About section styling
   const aboutStyle = {
     background: '#111b2e',
     border: '1px solid #26334a',
@@ -525,18 +530,24 @@ function App() {
             <div className="result-grid">
 
               <div className="result-card">
-                <p>Mean Absolute Error (MAE)</p>
-                <h3>{Number(evaluation.mae).toFixed(4)}</h3>
+                <p>Mean Absolute Error (MAE %)</p>
+                <h3>
+                  {Number(evaluation.mae_percent).toFixed(4)}%
+                </h3>
               </div>
 
               <div className="result-card">
-                <p>Root Mean Squared Error (RMSE)</p>
-                <h3>{Number(evaluation.rmse).toFixed(4)}</h3>
+                <p>Root Mean Squared Error (RMSE %)</p>
+                <h3>
+                  {Number(evaluation.rmse_percent).toFixed(4)}%
+                </h3>
               </div>
 
               <div className="result-card">
                 <p>R² Score</p>
-                <h3>{Number(evaluation.r2).toFixed(4)}</h3>
+                <h3>
+                  {Number(evaluation.r2_score).toFixed(4)}
+                </h3>
               </div>
 
               <div className="result-card">

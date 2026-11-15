@@ -1,5 +1,5 @@
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
 import time
@@ -8,7 +8,21 @@ from copy import deepcopy
 
 from prediction import predict_stock_price
 
+from database import (
+    initialize_database,
+    save_prediction,
+    get_prediction_history,
+    get_stock_prediction_history
+)
+
+
 app = FastAPI(title="EquityPredict")
+
+
+# Initialize SQLite when FastAPI starts
+@app.on_event("startup")
+def startup_event():
+    initialize_database()
 
 
 # CORS configuration
@@ -98,6 +112,10 @@ def predict_stock(symbol: str):
 
     try:
         result = get_cached_prediction(symbol)
+
+        # Save successful prediction in SQLite
+        save_prediction(result)
+
         return result
 
     except ValueError as error:
@@ -126,6 +144,10 @@ def predict_multiple_stocks(symbols: str):
 
         try:
             result = get_cached_prediction(symbol)
+
+            # Save successful prediction in SQLite
+            save_prediction(result)
+
             results.append(result)
 
         except Exception as error:
@@ -137,4 +159,35 @@ def predict_multiple_stocks(symbols: str):
     return {
         "total_stocks": len(results),
         "results": results
+    }
+
+
+# Retrieve all prediction history
+@app.get("/predictions/history")
+def prediction_history(
+    limit: int = Query(default=50, ge=1, le=500)
+):
+
+    return {
+        "total_records": len(get_prediction_history(limit)),
+        "predictions": get_prediction_history(limit)
+    }
+
+
+# Retrieve prediction history for one stock
+@app.get("/predictions/history/{symbol}")
+def stock_prediction_history(
+    symbol: str,
+    limit: int = Query(default=50, ge=1, le=500)
+):
+
+    predictions = get_stock_prediction_history(
+        symbol,
+        limit
+    )
+
+    return {
+        "stock": symbol.strip().upper(),
+        "total_records": len(predictions),
+        "predictions": predictions
     }
