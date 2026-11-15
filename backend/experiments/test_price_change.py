@@ -1,0 +1,3 @@
+from price_change_model import train_price_change_model
+
+train_price_change_model("AAPL")
