@@ -13,6 +13,38 @@ import './App.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
+// Detect currency based on stock exchange suffix
+function getCurrency(stockSymbol) {
+  const normalizedSymbol = (stockSymbol || '').trim().toUpperCase();
+
+  if (
+    normalizedSymbol.endsWith('.NS') ||
+    normalizedSymbol.endsWith('.BO')
+  ) {
+    return {
+      code: 'INR',
+      symbol: '₹',
+    };
+  }
+
+  return {
+    code: 'USD',
+    symbol: '$',
+  };
+}
+
+// Format stock prices using the correct currency
+function formatPrice(price, stockSymbol) {
+  const currency = getCurrency(stockSymbol);
+  const numericPrice = Number(price);
+
+  if (!Number.isFinite(numericPrice)) {
+    return `${currency.symbol}0.00`;
+  }
+
+  return `${currency.symbol}${numericPrice.toFixed(2)}`;
+}
+
 function getSignal(returnPercent) {
   if (returnPercent > 1) return 'BUY';
   if (returnPercent < -1) return 'SELL';
@@ -21,6 +53,7 @@ function getSignal(returnPercent) {
 
 function App() {
   const [symbol, setSymbol] = useState('AAPL');
+  const [analyzedSymbol, setAnalyzedSymbol] = useState('');
   const [prediction, setPrediction] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -47,6 +80,7 @@ function App() {
     setPrediction(null);
     setHistory([]);
     setEvaluation(null);
+    setAnalyzedSymbol('');
 
     try {
       const predictionResponse = await fetch(
@@ -63,6 +97,7 @@ function App() {
 
       setPrediction(predictionData);
       setEvaluation(predictionData.model_evaluation || null);
+      setAnalyzedSymbol(selectedSymbol);
 
       const historyResponse = await fetch(
         `${API_URL}/stock/${selectedSymbol}`
@@ -80,6 +115,10 @@ function App() {
 
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.');
+      setPrediction(null);
+      setHistory([]);
+      setEvaluation(null);
+      setAnalyzedSymbol('');
     } finally {
       setLoading(false);
     }
@@ -151,6 +190,7 @@ function App() {
     const headers = [
       'Rank',
       'Stock',
+      'Currency',
       'Latest Price',
       'Predicted Return (%)',
       'Predicted Price',
@@ -160,9 +200,10 @@ function App() {
     const rows = comparison.map((stock, index) => [
       index + 1,
       stock.stock,
-      stock.latest_close,
-      stock.predicted_return_percent,
-      stock.predicted_next_close,
+      getCurrency(stock.stock).code,
+      Number(stock.latest_close).toFixed(2),
+      Number(stock.predicted_return_percent).toFixed(3),
+      Number(stock.predicted_next_close).toFixed(2),
       getSignal(stock.predicted_return_percent),
     ]);
 
@@ -185,6 +226,9 @@ function App() {
   };
 
   const bestStock = comparison.length > 0 ? comparison[0] : null;
+
+  // Currency for the currently analyzed stock
+  const selectedCurrency = getCurrency(analyzedSymbol || symbol);
 
   // Calculate chart boundaries
   const chartPrices = history
@@ -253,7 +297,7 @@ function App() {
               onChange={(e) =>
                 setSymbol(e.target.value.toUpperCase())
               }
-              placeholder="Enter stock symbol (e.g. AAPL)"
+              placeholder="Enter stock symbol (e.g. AAPL or RELIANCE.NS)"
             />
 
             <button onClick={handlePredict} disabled={loading}>
@@ -262,7 +306,7 @@ function App() {
           </div>
 
           <p className="hint">
-            Try AAPL, GOOGL, MSFT or TSLA
+            Examples: AAPL, GOOGL, MSFT, TSLA, AMZN, NVDA, RELIANCE.NS, TCS.NS
           </p>
 
           {error && <p className="error">{error}</p>}
@@ -277,13 +321,13 @@ function App() {
 
               <div className="result-card">
                 <p>Stock Symbol</p>
-                <h3>{symbol.trim().toUpperCase()}</h3>
+                <h3>{analyzedSymbol}</h3>
               </div>
 
               <div className="result-card">
-                <p>Latest Closing Price</p>
+                <p>Latest Closing Price ({selectedCurrency.code})</p>
                 <h3>
-                  ${Number(prediction.latest_close).toFixed(2)}
+                  {formatPrice(prediction.latest_close, analyzedSymbol)}
                 </h3>
               </div>
 
@@ -303,11 +347,12 @@ function App() {
               </div>
 
               <div className="result-card">
-                <p>Predicted Next Closing Price</p>
+                <p>Predicted Next Closing Price ({selectedCurrency.code})</p>
                 <h3>
-                  ${Number(
-                    prediction.predicted_next_close
-                  ).toFixed(2)}
+                  {formatPrice(
+                    prediction.predicted_next_close,
+                    analyzedSymbol
+                  )}
                 </h3>
               </div>
 
@@ -325,7 +370,9 @@ function App() {
         {/* Historical Stock Chart */}
         {history.length > 0 && (
           <section className="chart-section">
-            <h2>Historical Stock Price</h2>
+            <h2>
+              Historical Stock Price ({selectedCurrency.code})
+            </h2>
 
             <div className="chart-container">
               <ResponsiveContainer width="100%" height={350}>
@@ -366,9 +413,11 @@ function App() {
                       minPrice - chartMargin,
                       maxPrice + chartMargin,
                     ]}
-                    tickFormatter={(value) => `$${value.toFixed(0)}`}
+                    tickFormatter={(value) =>
+                      `${selectedCurrency.symbol}${value.toFixed(0)}`
+                    }
                     tick={{ fontSize: 11 }}
-                    width={55}
+                    width={65}
                   />
 
                   <Tooltip
@@ -386,7 +435,7 @@ function App() {
                       })
                     }
                     formatter={(value) => [
-                      `$${Number(value).toFixed(2)}`,
+                      formatPrice(value, analyzedSymbol),
                       'Closing Price',
                     ]}
                   />
@@ -421,7 +470,7 @@ function App() {
               onChange={(e) =>
                 setMultipleSymbols(e.target.value.toUpperCase())
               }
-              placeholder="Example: AAPL, GOOGL, MSFT"
+              placeholder="Example: AAPL, GOOGL, RELIANCE.NS"
             />
 
             <button
@@ -450,10 +499,11 @@ function App() {
               </p>
 
               <p>
-                Predicted Price: $
-                {Number(
-                  bestStock.predicted_next_close
-                ).toFixed(2)}
+                Predicted Price:{' '}
+                {formatPrice(
+                  bestStock.predicted_next_close,
+                  bestStock.stock
+                )}
               </p>
             </div>
           )}
@@ -467,9 +517,9 @@ function App() {
                     <tr>
                       <th>Rank</th>
                       <th>Stock</th>
-                      <th>Latest Price ($)</th>
+                      <th>Latest Price</th>
                       <th>Predicted Return</th>
-                      <th>Predicted Price ($)</th>
+                      <th>Predicted Price</th>
                       <th>Signal</th>
                     </tr>
                   </thead>
@@ -480,7 +530,10 @@ function App() {
                         <td>#{index + 1}</td>
                         <td>{stock.stock}</td>
                         <td>
-                          {Number(stock.latest_close).toFixed(2)}
+                          {formatPrice(
+                            stock.latest_close,
+                            stock.stock
+                          )}
                         </td>
                         <td>
                           {Number(
@@ -488,9 +541,10 @@ function App() {
                           ).toFixed(3)}%
                         </td>
                         <td>
-                          {Number(
-                            stock.predicted_next_close
-                          ).toFixed(2)}
+                          {formatPrice(
+                            stock.predicted_next_close,
+                            stock.stock
+                          )}
                         </td>
                         <td>
                           {getSignal(stock.predicted_return_percent)}
