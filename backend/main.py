@@ -19,7 +19,7 @@ from database import (
 app = FastAPI(title="EquityPredict")
 
 
-# Initialize SQLite when FastAPI starts
+# Initialize database when FastAPI starts
 @app.on_event("startup")
 def startup_event():
     initialize_database()
@@ -114,7 +114,7 @@ def predict_stock(symbol: str):
     try:
         result = get_cached_prediction(symbol)
 
-        # Save successful prediction in SQLite
+        # Save successful prediction in database
         save_prediction(result)
 
         return result
@@ -146,7 +146,7 @@ def predict_multiple_stocks(symbols: str):
         try:
             result = get_cached_prediction(symbol)
 
-            # Save successful prediction in SQLite
+            # Save successful prediction in database
             save_prediction(result)
 
             results.append(result)
