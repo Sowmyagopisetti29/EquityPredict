@@ -1,5 +1,5 @@
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   LineChart,
   Line,
@@ -14,27 +14,16 @@ import './App.css';
 const API_URL =
   import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
-// Detect currency based on stock exchange suffix
 function getCurrency(stockSymbol) {
   const normalizedSymbol = (stockSymbol || '').trim().toUpperCase();
 
-  if (
-    normalizedSymbol.endsWith('.NS') ||
-    normalizedSymbol.endsWith('.BO')
-  ) {
-    return {
-      code: 'INR',
-      symbol: '₹',
-    };
+  if (normalizedSymbol.endsWith('.NS') || normalizedSymbol.endsWith('.BO')) {
+    return { code: 'INR', symbol: '₹' };
   }
 
-  return {
-    code: 'USD',
-    symbol: '$',
-  };
+  return { code: 'USD', symbol: '$' };
 }
 
-// Format stock prices using the correct currency
 function formatPrice(price, stockSymbol) {
   const currency = getCurrency(stockSymbol);
   const numericPrice = Number(price);
@@ -52,26 +41,19 @@ function getSignal(returnPercent) {
   return 'HOLD';
 }
 
-// Format a calendar date without shifting it across timezones
 function formatStockDate(date, includeYear = false) {
   const datePart = String(date).split('T')[0];
   const [year, month, day] = datePart.split('-').map(Number);
 
   if (
-    !year ||
-    !month ||
-    !day ||
-    month < 1 ||
-    month > 12 ||
-    day < 1 ||
-    day > 31
+    !year || !month || !day ||
+    month < 1 || month > 12 ||
+    day < 1 || day > 31
   ) {
     return String(date);
   }
 
-  const calendarDate = new Date(
-    Date.UTC(year, month - 1, day)
-  );
+  const calendarDate = new Date(Date.UTC(year, month - 1, day));
 
   return calendarDate.toLocaleDateString('en-US', {
     month: 'short',
@@ -81,8 +63,25 @@ function formatStockDate(date, includeYear = false) {
   });
 }
 
+function formatCreatedAt(date) {
+  if (!date) return 'Not available';
+
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return String(date);
+  }
+
+  return parsedDate.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function App() {
-  // References for stock input fields
   const symbolInputRef = useRef(null);
   const multipleSymbolsInputRef = useRef(null);
 
@@ -102,12 +101,50 @@ function App() {
 
   const [evaluation, setEvaluation] = useState(null);
 
+  // Prediction History states
+  const [predictionRecords, setPredictionRecords] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [historyFilter, setHistoryFilter] = useState('');
+
+  // Fetch saved prediction records from the backend
+  const loadPredictionHistory = async () => {
+    setHistoryLoading(true);
+    setHistoryError('');
+
+    try {
+      const response = await fetch(
+        `${API_URL}/predictions/history?limit=20`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || data.error || 'Unable to load prediction history.'
+        );
+      }
+
+      setPredictionRecords(data.predictions || []);
+    } catch (err) {
+      setHistoryError(
+        err.message || 'Unable to load prediction history.'
+      );
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // Load prediction history when the dashboard opens
+  useEffect(() => {
+    loadPredictionHistory();
+  }, []);
+
   // Predict a single stock
   const handlePredict = async () => {
     const enteredSymbol =
       symbolInputRef.current?.value ?? 'AAPL';
 
-    // Remove accidental spaces and convert to uppercase
     const selectedSymbol = enteredSymbol
       .replace(/\s+/g, '')
       .toUpperCase();
@@ -117,9 +154,7 @@ function App() {
       return;
     }
 
-    // Update state only after the user submits
     setSymbol(enteredSymbol);
-
     setLoading(true);
     setError('');
     setPrediction(null);
@@ -157,6 +192,10 @@ function App() {
       }
 
       setHistory(historyData.history || []);
+
+      // Refresh saved predictions after a successful prediction
+      await loadPredictionHistory();
+
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.');
       setPrediction(null);
@@ -174,14 +213,11 @@ function App() {
       multipleSymbolsInputRef.current?.value ??
       'AAPL, GOOGL, MSFT';
 
-    // Update state after submission, not on every keystroke
     setMultipleSymbols(enteredSymbols);
 
     const symbols = enteredSymbols
       .split(',')
-      .map((item) =>
-        item.replace(/\s+/g, '').toUpperCase()
-      )
+      .map((item) => item.replace(/\s+/g, '').toUpperCase())
       .filter(Boolean);
 
     if (symbols.length === 0) {
@@ -227,14 +263,13 @@ function App() {
       setComparison(sortedResults);
 
       if (sortedResults.length === 0) {
-        setCompareError(
-          'No valid stock predictions were returned.'
-        );
+        setCompareError('No valid stock predictions were returned.');
       }
+
+      await loadPredictionHistory();
+
     } catch (err) {
-      setCompareError(
-        err.message || 'Unable to compare stocks.'
-      );
+      setCompareError(err.message || 'Unable to compare stocks.');
     } finally {
       setCompareLoading(false);
     }
@@ -289,6 +324,14 @@ function App() {
     analyzedSymbol || symbol
   );
 
+  // Filter saved predictions by stock symbol
+  const filteredPredictionRecords = predictionRecords.filter(
+    (record) =>
+      (record.stock || '')
+        .toUpperCase()
+        .includes(historyFilter.trim().toUpperCase())
+  );
+
   // Calculate chart boundaries
   const chartPrices = history
     .map((item) => Number(item.Close))
@@ -307,7 +350,6 @@ function App() {
     2
   );
 
-  // About section styling
   const aboutStyle = {
     background: '#111b2e',
     border: '1px solid #26334a',
@@ -393,10 +435,7 @@ function App() {
               <div className="result-card">
                 <p>Latest Closing Price ({selectedCurrency.code})</p>
                 <h3>
-                  {formatPrice(
-                    prediction.latest_close,
-                    analyzedSymbol
-                  )}
+                  {formatPrice(prediction.latest_close, analyzedSymbol)}
                 </h3>
               </div>
 
@@ -409,9 +448,7 @@ function App() {
                       : 'negative'
                   }
                 >
-                  {Number(
-                    prediction.predicted_return_percent
-                  ).toFixed(3)}%
+                  {Number(prediction.predicted_return_percent).toFixed(3)}%
                 </h3>
               </div>
 
@@ -430,9 +467,7 @@ function App() {
               <div className="result-card">
                 <p>Buy / Hold / Sell Signal</p>
                 <h3>
-                  {getSignal(
-                    prediction.predicted_return_percent
-                  )}
+                  {getSignal(prediction.predicted_return_percent)}
                 </h3>
               </div>
 
@@ -458,7 +493,6 @@ function App() {
                     bottom: 5,
                   }}
                 >
-
                   <CartesianGrid
                     strokeDasharray="3 3"
                     stroke="#26334a"
@@ -469,9 +503,7 @@ function App() {
                     stroke="#94a3b8"
                     tick={{ fontSize: 11 }}
                     minTickGap={25}
-                    tickFormatter={(date) =>
-                      formatStockDate(date)
-                    }
+                    tickFormatter={(date) => formatStockDate(date)}
                   />
 
                   <YAxis
@@ -481,8 +513,7 @@ function App() {
                       maxPrice + chartMargin,
                     ]}
                     tickFormatter={(value) =>
-                      selectedCurrency.symbol +
-                      value.toFixed(0)
+                      selectedCurrency.symbol + value.toFixed(0)
                     }
                     tick={{ fontSize: 11 }}
                     width={65}
@@ -511,7 +542,6 @@ function App() {
                     dot={false}
                     activeDot={{ r: 5 }}
                   />
-
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -558,9 +588,7 @@ function App() {
               <p>
                 Predicted Return:{' '}
                 <strong>
-                  {Number(
-                    bestStock.predicted_return_percent
-                  ).toFixed(3)}%
+                  {Number(bestStock.predicted_return_percent).toFixed(3)}%
                 </strong>
               </p>
 
@@ -578,7 +606,6 @@ function App() {
             <>
               <div className="table-container">
                 <table className="stock-table">
-
                   <thead>
                     <tr>
                       <th>Rank</th>
@@ -596,15 +623,10 @@ function App() {
                         <td>#{index + 1}</td>
                         <td>{stock.stock}</td>
                         <td>
-                          {formatPrice(
-                            stock.latest_close,
-                            stock.stock
-                          )}
+                          {formatPrice(stock.latest_close, stock.stock)}
                         </td>
                         <td>
-                          {Number(
-                            stock.predicted_return_percent
-                          ).toFixed(3)}%
+                          {Number(stock.predicted_return_percent).toFixed(3)}%
                         </td>
                         <td>
                           {formatPrice(
@@ -613,14 +635,11 @@ function App() {
                           )}
                         </td>
                         <td>
-                          {getSignal(
-                            stock.predicted_return_percent
-                          )}
+                          {getSignal(stock.predicted_return_percent)}
                         </td>
                       </tr>
                     ))}
                   </tbody>
-
                 </table>
               </div>
 
@@ -644,32 +663,166 @@ function App() {
           )}
         </section>
 
+        {/* Prediction History */}
+        <section className="multiple-section">
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '12px',
+              flexWrap: 'wrap',
+              marginBottom: '12px',
+            }}
+          >
+            <div>
+              <h2>Prediction History</h2>
+              <p>
+                View your recently saved stock predictions.
+              </p>
+            </div>
+
+            <button
+              onClick={loadPredictionHistory}
+              disabled={historyLoading}
+              style={{
+                padding: '10px 16px',
+                background: '#0284c7',
+                color: 'white',
+                border: 'none',
+                borderRadius: '7px',
+                cursor: historyLoading ? 'not-allowed' : 'pointer',
+                fontWeight: '600',
+              }}
+            >
+              {historyLoading ? 'Refreshing...' : 'Refresh History'}
+            </button>
+          </div>
+
+          <input
+            type="text"
+            value={historyFilter}
+            onChange={(event) => setHistoryFilter(event.target.value)}
+            placeholder="Filter by stock symbol (e.g. AAPL)"
+            style={{
+              width: '100%',
+              maxWidth: '350px',
+              padding: '11px',
+              marginBottom: '18px',
+              background: '#111b2e',
+              color: '#f1f5f9',
+              border: '1px solid #26334a',
+              borderRadius: '7px',
+              boxSizing: 'border-box',
+            }}
+          />
+
+          {historyError && (
+            <p className="error">{historyError}</p>
+          )}
+
+          {historyLoading && predictionRecords.length === 0 && (
+            <p style={{ color: '#94a3b8' }}>
+              Loading prediction history...
+            </p>
+          )}
+
+          {!historyLoading &&
+            !historyError &&
+            predictionRecords.length === 0 && (
+              <p style={{ color: '#94a3b8' }}>
+                No saved predictions found. Analyze a stock to create your first record.
+              </p>
+            )}
+
+          {filteredPredictionRecords.length > 0 && (
+            <>
+              <div className="table-container">
+                <table className="stock-table">
+                  <thead>
+                    <tr>
+                      <th>Date & Time</th>
+                      <th>Stock</th>
+                      <th>Latest Price</th>
+                      <th>Predicted Return</th>
+                      <th>Predicted Price</th>
+                      <th>Signal</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {filteredPredictionRecords.map((record) => (
+                      <tr key={record.id}>
+                        <td>{formatCreatedAt(record.created_at)}</td>
+                        <td>{record.stock}</td>
+                        <td>
+                          {formatPrice(record.latest_close, record.stock)}
+                        </td>
+                        <td
+                          className={
+                            Number(record.predicted_return_percent) >= 0
+                              ? 'positive'
+                              : 'negative'
+                          }
+                        >
+                          {Number(record.predicted_return_percent).toFixed(3)}%
+                        </td>
+                        <td>
+                          {formatPrice(
+                            record.predicted_next_close,
+                            record.stock
+                          )}
+                        </td>
+                        <td>
+                          {getSignal(record.predicted_return_percent)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <p
+                style={{
+                  color: '#94a3b8',
+                  marginTop: '12px',
+                  fontSize: '13px',
+                }}
+              >
+                Showing {filteredPredictionRecords.length} of{' '}
+                {predictionRecords.length} recently retrieved records.
+              </p>
+            </>
+          )}
+
+          {historyFilter &&
+            filteredPredictionRecords.length === 0 &&
+            predictionRecords.length > 0 && (
+              <p style={{ color: '#94a3b8' }}>
+                No prediction records found for "{historyFilter}".
+              </p>
+            )}
+        </section>
+
         {/* Model Evaluation */}
         {evaluation && (
           <section className="results">
             <h2>Model Performance</h2>
 
             <div className="result-grid">
-
               <div className="result-card">
                 <p>Mean Absolute Error (MAE %)</p>
-                <h3>
-                  {Number(evaluation.mae_percent).toFixed(4)}%
-                </h3>
+                <h3>{Number(evaluation.mae_percent).toFixed(4)}%</h3>
               </div>
 
               <div className="result-card">
                 <p>Root Mean Squared Error (RMSE %)</p>
-                <h3>
-                  {Number(evaluation.rmse_percent).toFixed(4)}%
-                </h3>
+                <h3>{Number(evaluation.rmse_percent).toFixed(4)}%</h3>
               </div>
 
               <div className="result-card">
                 <p>R² Score</p>
-                <h3>
-                  {Number(evaluation.r2_score).toFixed(4)}
-                </h3>
+                <h3>{Number(evaluation.r2_score).toFixed(4)}</h3>
               </div>
 
               <div className="result-card">
@@ -681,7 +834,6 @@ function App() {
                 <p>Testing Samples</p>
                 <h3>{evaluation.testing_samples}</h3>
               </div>
-
             </div>
           </section>
         )}
@@ -693,7 +845,6 @@ function App() {
             marginBottom: '35px',
           }}
         >
-
           <h2
             style={{
               marginBottom: '8px',
@@ -784,7 +935,6 @@ function App() {
               <strong>Output:</strong> Predictions, charts and stock rankings
             </p>
           </details>
-
         </section>
 
       </main>
