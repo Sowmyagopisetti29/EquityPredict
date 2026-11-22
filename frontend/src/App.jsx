@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   LineChart,
   Line,
@@ -11,7 +10,8 @@ import {
 } from 'recharts';
 import './App.css';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const API_URL =
+  import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 // Detect currency based on stock exchange suffix
 function getCurrency(stockSymbol) {
@@ -39,10 +39,10 @@ function formatPrice(price, stockSymbol) {
   const numericPrice = Number(price);
 
   if (!Number.isFinite(numericPrice)) {
-    return `${currency.symbol}0.00`;
+    return currency.symbol + '0.00';
   }
 
-  return `${currency.symbol}${numericPrice.toFixed(2)}`;
+  return currency.symbol + numericPrice.toFixed(2);
 }
 
 function getSignal(returnPercent) {
@@ -52,6 +52,10 @@ function getSignal(returnPercent) {
 }
 
 function App() {
+  // References for stock input fields
+  const symbolInputRef = useRef(null);
+  const multipleSymbolsInputRef = useRef(null);
+
   const [symbol, setSymbol] = useState('AAPL');
   const [analyzedSymbol, setAnalyzedSymbol] = useState('');
   const [prediction, setPrediction] = useState(null);
@@ -59,7 +63,9 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const [multipleSymbols, setMultipleSymbols] = useState('AAPL, GOOGL, MSFT');
+  const [multipleSymbols, setMultipleSymbols] = useState(
+    'AAPL, GOOGL, MSFT'
+  );
   const [comparison, setComparison] = useState([]);
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareError, setCompareError] = useState('');
@@ -68,12 +74,21 @@ function App() {
 
   // Predict a single stock
   const handlePredict = async () => {
-    const selectedSymbol = symbol.trim().toUpperCase();
+    const enteredSymbol =
+      symbolInputRef.current?.value ?? 'AAPL';
+
+    // Remove accidental spaces and convert to uppercase
+    const selectedSymbol = enteredSymbol
+      .replace(/\s+/g, '')
+      .toUpperCase();
 
     if (!selectedSymbol) {
       setError('Please enter a stock symbol.');
       return;
     }
+
+    // Update state only after the user submits
+    setSymbol(enteredSymbol);
 
     setLoading(true);
     setError('');
@@ -84,14 +99,14 @@ function App() {
 
     try {
       const predictionResponse = await fetch(
-        `${API_URL}/predict/${selectedSymbol}`
+        `${API_URL}/predict/${encodeURIComponent(selectedSymbol)}`
       );
 
       const predictionData = await predictionResponse.json();
 
       if (!predictionResponse.ok || predictionData.error) {
         throw new Error(
-          predictionData.error || 'Unable to predict this stock.'
+          `We couldn't find stock data for ${selectedSymbol}. Please check the ticker symbol and try again.`
         );
       }
 
@@ -100,7 +115,7 @@ function App() {
       setAnalyzedSymbol(selectedSymbol);
 
       const historyResponse = await fetch(
-        `${API_URL}/stock/${selectedSymbol}`
+        `${API_URL}/stock/${encodeURIComponent(selectedSymbol)}`
       );
 
       const historyData = await historyResponse.json();
@@ -112,7 +127,6 @@ function App() {
       }
 
       setHistory(historyData.history || []);
-
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.');
       setPrediction(null);
@@ -126,9 +140,18 @@ function App() {
 
   // Compare multiple stocks
   const handleCompare = async () => {
-    const symbols = multipleSymbols
+    const enteredSymbols =
+      multipleSymbolsInputRef.current?.value ??
+      'AAPL, GOOGL, MSFT';
+
+    // Update state after submission, not on every keystroke
+    setMultipleSymbols(enteredSymbols);
+
+    const symbols = enteredSymbols
       .split(',')
-      .map((item) => item.trim().toUpperCase())
+      .map((item) =>
+        item.replace(/\s+/g, '').toUpperCase()
+      )
       .filter(Boolean);
 
     if (symbols.length === 0) {
@@ -167,17 +190,21 @@ function App() {
         .filter((stock) => !stock.error)
         .sort(
           (a, b) =>
-            b.predicted_return_percent - a.predicted_return_percent
+            b.predicted_return_percent -
+            a.predicted_return_percent
         );
 
       setComparison(sortedResults);
 
       if (sortedResults.length === 0) {
-        setCompareError('No valid stock predictions were returned.');
+        setCompareError(
+          'No valid stock predictions were returned.'
+        );
       }
-
     } catch (err) {
-      setCompareError(err.message || 'Unable to compare stocks.');
+      setCompareError(
+        err.message || 'Unable to compare stocks.'
+      );
     } finally {
       setCompareLoading(false);
     }
@@ -225,10 +252,12 @@ function App() {
     URL.revokeObjectURL(url);
   };
 
-  const bestStock = comparison.length > 0 ? comparison[0] : null;
+  const bestStock =
+    comparison.length > 0 ? comparison[0] : null;
 
-  // Currency for the currently analyzed stock
-  const selectedCurrency = getCurrency(analyzedSymbol || symbol);
+  const selectedCurrency = getCurrency(
+    analyzedSymbol || symbol
+  );
 
   // Calculate chart boundaries
   const chartPrices = history
@@ -243,7 +272,10 @@ function App() {
     ? Math.max(...chartPrices)
     : 0;
 
-  const chartMargin = Math.max((maxPrice - minPrice) * 0.1, 2);
+  const chartMargin = Math.max(
+    (maxPrice - minPrice) * 0.1,
+    2
+  );
 
   // About section styling
   const aboutStyle = {
@@ -292,12 +324,15 @@ function App() {
 
           <div className="search-box">
             <input
+              ref={symbolInputRef}
               type="text"
-              value={symbol}
-              onChange={(e) =>
-                setSymbol(e.target.value.toUpperCase())
-              }
+              defaultValue="AAPL"
               placeholder="Enter stock symbol (e.g. AAPL or RELIANCE.NS)"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              inputMode="text"
             />
 
             <button onClick={handlePredict} disabled={loading}>
@@ -306,7 +341,8 @@ function App() {
           </div>
 
           <p className="hint">
-            Examples: AAPL, GOOGL, MSFT, TSLA, AMZN, NVDA, RELIANCE.NS, TCS.NS
+            Examples: AAPL, GOOGL, MSFT, TSLA, AMZN, NVDA,
+            RELIANCE.NS, TCS.NS
           </p>
 
           {error && <p className="error">{error}</p>}
@@ -327,7 +363,10 @@ function App() {
               <div className="result-card">
                 <p>Latest Closing Price ({selectedCurrency.code})</p>
                 <h3>
-                  {formatPrice(prediction.latest_close, analyzedSymbol)}
+                  {formatPrice(
+                    prediction.latest_close,
+                    analyzedSymbol
+                  )}
                 </h3>
               </div>
 
@@ -347,7 +386,9 @@ function App() {
               </div>
 
               <div className="result-card">
-                <p>Predicted Next Closing Price ({selectedCurrency.code})</p>
+                <p>
+                  Predicted Next Closing Price ({selectedCurrency.code})
+                </p>
                 <h3>
                   {formatPrice(
                     prediction.predicted_next_close,
@@ -359,7 +400,9 @@ function App() {
               <div className="result-card">
                 <p>Buy / Hold / Sell Signal</p>
                 <h3>
-                  {getSignal(prediction.predicted_return_percent)}
+                  {getSignal(
+                    prediction.predicted_return_percent
+                  )}
                 </h3>
               </div>
 
@@ -399,11 +442,14 @@ function App() {
                     tickFormatter={(date) => {
                       const parsedDate = new Date(date);
 
-                      return parsedDate.toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: '2-digit',
-                        timeZone: 'UTC',
-                      });
+                      return parsedDate.toLocaleDateString(
+                        'en-US',
+                        {
+                          month: 'short',
+                          day: '2-digit',
+                          timeZone: 'UTC',
+                        }
+                      );
                     }}
                   />
 
@@ -414,7 +460,8 @@ function App() {
                       maxPrice + chartMargin,
                     ]}
                     tickFormatter={(value) =>
-                      `${selectedCurrency.symbol}${value.toFixed(0)}`
+                      selectedCurrency.symbol +
+                      value.toFixed(0)
                     }
                     tick={{ fontSize: 11 }}
                     width={65}
@@ -427,12 +474,15 @@ function App() {
                       color: '#f1f5f9',
                     }}
                     labelFormatter={(date) =>
-                      new Date(date).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: '2-digit',
-                        year: 'numeric',
-                        timeZone: 'UTC',
-                      })
+                      new Date(date).toLocaleDateString(
+                        'en-US',
+                        {
+                          month: 'short',
+                          day: '2-digit',
+                          year: 'numeric',
+                          timeZone: 'UTC',
+                        }
+                      )
                     }
                     formatter={(value) => [
                       formatPrice(value, analyzedSymbol),
@@ -465,12 +515,15 @@ function App() {
 
           <div className="search-box">
             <input
+              ref={multipleSymbolsInputRef}
               type="text"
-              value={multipleSymbols}
-              onChange={(e) =>
-                setMultipleSymbols(e.target.value.toUpperCase())
-              }
+              defaultValue="AAPL, GOOGL, MSFT"
               placeholder="Example: AAPL, GOOGL, RELIANCE.NS"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              inputMode="text"
             />
 
             <button
@@ -547,7 +600,9 @@ function App() {
                           )}
                         </td>
                         <td>
-                          {getSignal(stock.predicted_return_percent)}
+                          {getSignal(
+                            stock.predicted_return_percent
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -619,13 +674,28 @@ function App() {
         )}
 
         {/* About EquityPredict */}
-        <section style={{ marginTop: '35px', marginBottom: '35px' }}>
+        <section
+          style={{
+            marginTop: '35px',
+            marginBottom: '35px',
+          }}
+        >
 
-          <h2 style={{ marginBottom: '8px', color: '#f1f5f9' }}>
+          <h2
+            style={{
+              marginBottom: '8px',
+              color: '#f1f5f9',
+            }}
+          >
             About EquityPredict
           </h2>
 
-          <p style={{ color: '#94a3b8', marginBottom: '18px' }}>
+          <p
+            style={{
+              color: '#94a3b8',
+              marginBottom: '18px',
+            }}
+          >
             Learn more about the project and its technology.
           </p>
 

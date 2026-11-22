@@ -69,7 +69,45 @@ def create_model(config):
 
 
 # --------------------------------------------------
-# 3. FEATURE ENGINEERING
+# 3. PREPARE HISTORICAL DATA
+# --------------------------------------------------
+
+def prepare_stock_data(data):
+
+    data = data.copy()
+
+    # Verify that the actual trading date is available
+    if "Date" not in data.columns:
+        raise ValueError(
+            "Date column is missing from historical stock data"
+        )
+
+    # Convert Date column into datetime format
+    data["Date"] = pd.to_datetime(
+        data["Date"],
+        errors="coerce"
+    )
+
+    # Remove rows with invalid dates
+    data = data.dropna(subset=["Date"])
+
+    # Sort using actual trading dates
+    data = data.sort_values("Date")
+
+    # Remove duplicate trading dates
+    data = data.drop_duplicates(
+        subset=["Date"],
+        keep="last"
+    )
+
+    # Create a fresh numerical index
+    data = data.reset_index(drop=True)
+
+    return data
+
+
+# --------------------------------------------------
+# 4. FEATURE ENGINEERING
 # --------------------------------------------------
 
 def create_features(data):
@@ -81,17 +119,19 @@ def create_features(data):
 
     # Previous day returns
     for lag in [1, 2, 3, 5]:
-        data[f"Return_Lag_{lag}"] = data["Daily_Return"].shift(lag)
+        data[f"Return_Lag_{lag}"] = (
+            data["Daily_Return"].shift(lag)
+        )
 
     # Intraday return
     data["Intraday_Return"] = (
-        data["Close"] - data["Open"]
-    ) / data["Open"]
+        (data["Close"] - data["Open"]) / data["Open"]
+    )
 
     # High-low price range
     data["High_Low_Range"] = (
-        data["High"] - data["Low"]
-    ) / data["Close"]
+        (data["High"] - data["Low"]) / data["Close"]
+    )
 
     # Moving averages
     data["MA_5"] = data["Close"].rolling(5).mean()
@@ -141,7 +181,6 @@ def create_features(data):
 
     # Bollinger Band position
     rolling_mean = data["Close"].rolling(20).mean()
-
     rolling_std = data["Close"].rolling(20).std()
 
     upper_band = rolling_mean + (2 * rolling_std)
@@ -175,7 +214,7 @@ def create_features(data):
 
 
 # --------------------------------------------------
-# 4. MAIN STOCK PREDICTION FUNCTION
+# 5. MAIN STOCK PREDICTION FUNCTION
 # --------------------------------------------------
 
 def predict_stock_price(symbol):
@@ -188,13 +227,8 @@ def predict_stock_price(symbol):
             "error": "No stock data available"
         }
 
-    data = data.copy()
-
-    # Ensure chronological order
-    data = data.sort_index()
-
-    # Remove duplicate dates, if any
-    data = data[~data.index.duplicated(keep="last")]
+    # Correctly sort and deduplicate using actual dates
+    data = prepare_stock_data(data)
 
     # Generate technical indicators
     data = create_features(data)
@@ -252,7 +286,7 @@ def predict_stock_price(symbol):
     y = training_data["Target"]
 
     # --------------------------------------------------
-    # 5. CHRONOLOGICAL 80:20 TRAIN-TEST SPLIT
+    # 6. CHRONOLOGICAL 80:20 TRAIN-TEST SPLIT
     # --------------------------------------------------
 
     split_index = int(len(training_data) * 0.8)
@@ -272,7 +306,7 @@ def predict_stock_price(symbol):
     y_test = y.iloc[split_index:]
 
     # --------------------------------------------------
-    # 6. WALK-FORWARD VALIDATION
+    # 7. WALK-FORWARD VALIDATION
     # --------------------------------------------------
 
     time_split = TimeSeriesSplit(
@@ -339,7 +373,7 @@ def predict_stock_price(symbol):
             best_model_name = model_name
 
     # --------------------------------------------------
-    # 7. FINAL MODEL EVALUATION
+    # 8. FINAL MODEL EVALUATION
     # --------------------------------------------------
 
     best_config = MODEL_CONFIGS[best_model_name]
@@ -394,7 +428,7 @@ def predict_stock_price(symbol):
     ) * 100
 
     # --------------------------------------------------
-    # 8. TRAIN FINAL MODEL USING ALL KNOWN TARGETS
+    # 9. TRAIN FINAL MODEL USING ALL KNOWN TARGETS
     # --------------------------------------------------
 
     final_model = create_model(best_config)
@@ -416,7 +450,7 @@ def predict_stock_price(symbol):
     )
 
     # --------------------------------------------------
-    # 9. RETURN RESULTS TO FASTAPI
+    # 10. RETURN RESULTS TO FASTAPI
     # --------------------------------------------------
 
     return {

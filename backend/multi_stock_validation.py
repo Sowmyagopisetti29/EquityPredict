@@ -7,15 +7,24 @@ import numpy as np
 import pandas as pd
 
 
-# Step 1: Stocks to evaluate
+# --------------------------------------------------
+# 1. STOCKS TO EVALUATE
+# --------------------------------------------------
+
 stocks = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
 
 
-# Step 2: Store results
+# --------------------------------------------------
+# 2. STORE RESULTS
+# --------------------------------------------------
+
 results = []
 
 
-# Step 3: Process each stock
+# --------------------------------------------------
+# 3. PROCESS EACH STOCK
+# --------------------------------------------------
+
 for symbol in stocks:
 
     print(f"\nEvaluating {symbol}...")
@@ -24,7 +33,34 @@ for symbol in stocks:
 
         data = fetch_stock_data(symbol)
 
-        # Create technical indicators
+        # Verify Date column
+        if "Date" not in data.columns:
+            raise ValueError("Date column is missing")
+
+        # Convert Date column to datetime
+        data["Date"] = pd.to_datetime(
+            data["Date"],
+            errors="coerce"
+        )
+
+        # Remove invalid dates
+        data = data.dropna(subset=["Date"])
+
+        # Sort by actual trading date
+        data = data.sort_values("Date")
+
+        # Remove duplicate trading dates
+        data = data.drop_duplicates(
+            subset=["Date"],
+            keep="last"
+        )
+
+        data = data.reset_index(drop=True)
+
+        # --------------------------------------------------
+        # 4. CREATE TECHNICAL INDICATORS
+        # --------------------------------------------------
+
         data["Daily_Return"] = data["Close"].pct_change()
 
         data["Intraday_Return"] = (
@@ -53,16 +89,25 @@ for symbol in stocks:
 
         data["RSI"] = 100 - (100 / (1 + rs))
 
-        ema_12 = data["Close"].ewm(span=12, adjust=False).mean()
-        ema_26 = data["Close"].ewm(span=26, adjust=False).mean()
+        ema_12 = data["Close"].ewm(
+            span=12,
+            adjust=False
+        ).mean()
+
+        ema_26 = data["Close"].ewm(
+            span=26,
+            adjust=False
+        ).mean()
 
         macd = ema_12 - ema_26
 
         data["MACD"] = macd / data["Close"]
 
         data["MACD_Signal"] = (
-            macd.ewm(span=9, adjust=False).mean()
-            / data["Close"]
+            macd.ewm(
+                span=9,
+                adjust=False
+            ).mean() / data["Close"]
         )
 
         middle_band = data["Close"].rolling(20).mean()
@@ -76,20 +121,35 @@ for symbol in stocks:
             / (upper_band - lower_band)
         )
 
-        data["Volatility"] = data["Daily_Return"].rolling(10).std()
+        data["Volatility"] = (
+            data["Daily_Return"].rolling(10).std()
+        )
 
         data["Volume_Change"] = data["Volume"].pct_change()
 
-        # Create next-day return target
+        # --------------------------------------------------
+        # 5. CREATE NEXT-DAY RETURN TARGET
+        # --------------------------------------------------
+
         data["Target"] = (
             data["Close"].shift(-1) / data["Close"]
         ) - 1
 
-        # Clean data
-        data = data.replace([np.inf, -np.inf], np.nan)
+        # --------------------------------------------------
+        # 6. CLEAN DATA
+        # --------------------------------------------------
+
+        data = data.replace(
+            [np.inf, -np.inf],
+            np.nan
+        )
+
         data = data.dropna().reset_index(drop=True)
 
-        # Select features
+        # --------------------------------------------------
+        # 7. SELECT FEATURES
+        # --------------------------------------------------
+
         features = [
             "Daily_Return",
             "Intraday_Return",
@@ -107,7 +167,10 @@ for symbol in stocks:
         X = data[features]
         y = data["Target"]
 
-        # Walk-forward validation
+        # --------------------------------------------------
+        # 8. WALK-FORWARD VALIDATION
+        # --------------------------------------------------
+
         initial_train_size = int(len(data) * 0.6)
         window_size = 50
 
@@ -151,7 +214,15 @@ for symbol in stocks:
                 np.abs(y_test.to_numpy())
             )
 
-        # Calculate MAE
+        # --------------------------------------------------
+        # 9. CALCULATE MAE
+        # --------------------------------------------------
+
+        if not model_errors:
+            raise ValueError(
+                "Not enough data for walk-forward validation"
+            )
+
         model_mae = np.mean(model_errors)
         baseline_mae = np.mean(baseline_errors)
 
@@ -176,7 +247,10 @@ for symbol in stocks:
         print("Reason:", error)
 
 
-# Step 4: Display final comparison
+# --------------------------------------------------
+# 10. DISPLAY FINAL COMPARISON
+# --------------------------------------------------
+
 print("\nMULTI-STOCK VALIDATION RESULTS")
 print("--------------------------------")
 
