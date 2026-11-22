@@ -1,3 +1,4 @@
+
 import { useRef, useState } from 'react';
 import {
   LineChart,
@@ -49,6 +50,35 @@ function getSignal(returnPercent) {
   if (returnPercent > 1) return 'BUY';
   if (returnPercent < -1) return 'SELL';
   return 'HOLD';
+}
+
+// Format a calendar date without shifting it across timezones
+function formatStockDate(date, includeYear = false) {
+  const datePart = String(date).split('T')[0];
+  const [year, month, day] = datePart.split('-').map(Number);
+
+  if (
+    !year ||
+    !month ||
+    !day ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31
+  ) {
+    return String(date);
+  }
+
+  const calendarDate = new Date(
+    Date.UTC(year, month - 1, day)
+  );
+
+  return calendarDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: '2-digit',
+    ...(includeYear ? { year: 'numeric' } : {}),
+    timeZone: 'UTC',
+  });
 }
 
 function App() {
@@ -439,18 +469,9 @@ function App() {
                     stroke="#94a3b8"
                     tick={{ fontSize: 11 }}
                     minTickGap={25}
-                    tickFormatter={(date) => {
-                      const parsedDate = new Date(date);
-
-                      return parsedDate.toLocaleDateString(
-                        'en-US',
-                        {
-                          month: 'short',
-                          day: '2-digit',
-                          timeZone: 'UTC',
-                        }
-                      );
-                    }}
+                    tickFormatter={(date) =>
+                      formatStockDate(date)
+                    }
                   />
 
                   <YAxis
@@ -474,15 +495,7 @@ function App() {
                       color: '#f1f5f9',
                     }}
                     labelFormatter={(date) =>
-                      new Date(date).toLocaleDateString(
-                        'en-US',
-                        {
-                          month: 'short',
-                          day: '2-digit',
-                          year: 'numeric',
-                          timeZone: 'UTC',
-                        }
-                      )
+                      formatStockDate(date, true)
                     }
                     formatter={(value) => [
                       formatPrice(value, analyzedSymbol),

@@ -91,15 +91,45 @@ def home():
 def get_stock_data(symbol: str):
 
     try:
-        stock = yf.Ticker(symbol.upper())
+        normalized_symbol = symbol.strip().upper()
+
+        stock = yf.Ticker(normalized_symbol)
         data = stock.history(period="1mo")
 
         if data.empty:
             return {"error": "No stock data found"}
 
+        # Convert the DataFrame index into a normal column
+        history_data = data.reset_index()
+
+        # Identify the date column returned by yfinance
+        date_column = next(
+            (
+                column
+                for column in ["Date", "Datetime"]
+                if column in history_data.columns
+            ),
+            None
+        )
+
+        if date_column is None:
+            return {
+                "error": "Historical stock data does not contain a date column."
+            }
+
+        # Preserve the original exchange calendar date.
+        # Do not convert timezone-aware timestamps to UTC.
+        history_data[date_column] = history_data[date_column].apply(
+            lambda value: (
+                value.strftime("%Y-%m-%d")
+                if hasattr(value, "strftime")
+                else str(value).split("T")[0].split(" ")[0]
+            )
+        )
+
         return {
-            "stock": symbol.upper(),
-            "history": data.reset_index().to_dict(orient="records")
+            "stock": normalized_symbol,
+            "history": history_data.to_dict(orient="records")
         }
 
     except Exception as error:
@@ -170,9 +200,11 @@ def prediction_history(
     limit: int = Query(default=50, ge=1, le=500)
 ):
 
+    predictions = get_prediction_history(limit)
+
     return {
-        "total_records": len(get_prediction_history(limit)),
-        "predictions": get_prediction_history(limit)
+        "total_records": len(predictions),
+        "predictions": predictions
     }
 
 
