@@ -85,6 +85,14 @@ function App() {
   const symbolInputRef = useRef(null);
   const multipleSymbolsInputRef = useRef(null);
 
+  const [token, setToken] = useState(() => localStorage.getItem('equitypredict_token') || '');
+  const [accountEmail, setAccountEmail] = useState(() => localStorage.getItem('equitypredict_email') || '');
+  const [authMode, setAuthMode] = useState('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+
   const [symbol, setSymbol] = useState('AAPL');
   const [analyzedSymbol, setAnalyzedSymbol] = useState('');
   const [prediction, setPrediction] = useState(null);
@@ -107,14 +115,53 @@ function App() {
   const [historyError, setHistoryError] = useState('');
   const [historyFilter, setHistoryFilter] = useState('');
 
+  // Sign in or create an account.
+  const handleAuth = async (event) => {
+    event.preventDefault();
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const response = await fetch(`${API_URL}/auth/${authMode}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: authEmail, password: authPassword }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Unable to authenticate.');
+      localStorage.setItem('equitypredict_token', data.access_token);
+      localStorage.setItem('equitypredict_email', data.email);
+      setToken(data.access_token);
+      setAccountEmail(data.email);
+      setAuthPassword('');
+    } catch (err) {
+      setAuthError(err.message || 'Unable to authenticate.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('equitypredict_token');
+    localStorage.removeItem('equitypredict_email');
+    setToken('');
+    setAccountEmail('');
+    setPredictionRecords([]);
+    setPrediction(null);
+    setComparison([]);
+  };
+
+  const authHeaders = () => ({ Authorization: `Bearer ${token}` });
+
   // Fetch saved prediction records from the backend
   const loadPredictionHistory = async () => {
+    if (!token) return;
     setHistoryLoading(true);
     setHistoryError('');
 
     try {
       const response = await fetch(
-        `${API_URL}/predictions/history?limit=20`
+        `${API_URL}/predictions/history?limit=20`,
+        { headers: authHeaders() }
       );
 
       const data = await response.json();
@@ -137,8 +184,8 @@ function App() {
 
   // Load prediction history when the dashboard opens
   useEffect(() => {
-    loadPredictionHistory();
-  }, []);
+    if (token) loadPredictionHistory();
+  }, [token]);
 
   // Predict a single stock
   const handlePredict = async () => {
@@ -164,7 +211,8 @@ function App() {
 
     try {
       const predictionResponse = await fetch(
-        `${API_URL}/predict/${encodeURIComponent(selectedSymbol)}`
+        `${API_URL}/predict/${encodeURIComponent(selectedSymbol)}`,
+        { headers: authHeaders() }
       );
 
       const predictionData = await predictionResponse.json();
@@ -243,7 +291,8 @@ function App() {
       const response = await fetch(
         `${API_URL}/predict-multiple?symbols=${encodeURIComponent(
           symbols.join(',')
-        )}`
+        )}`,
+        { headers: authHeaders() }
       );
 
       const data = await response.json();
@@ -373,8 +422,15 @@ function App() {
       <nav className="navbar">
         <h2>EquityPredict</h2>
         <p>AI-Powered Stock Market Insights</p>
+        {token && (
+          <div className="account-bar">
+            <span>{accountEmail}</span>
+            <button onClick={handleLogout}>Log out</button>
+          </div>
+        )}
       </nav>
 
+      {token ? (
       <main className="dashboard">
 
         {/* Welcome Section */}
@@ -938,6 +994,26 @@ function App() {
         </section>
 
       </main>
+      ) : (
+        <main className="auth-page">
+          <form className="auth-card" onSubmit={handleAuth}>
+            <h1>{authMode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
+            <p>Sign in to keep your stock prediction history private to your account.</p>
+            <label htmlFor="auth-email">Email address</label>
+            <input id="auth-email" type="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required autoComplete="email" />
+            <label htmlFor="auth-password">Password</label>
+            <input id="auth-password" type="password" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} required minLength={8} autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} />
+            {authError && <p className="error">{authError}</p>}
+            <button type="submit" disabled={authLoading}>{authLoading ? 'Please wait...' : authMode === 'login' ? 'Log in' : 'Create account'}</button>
+            <p className="auth-switch">
+              {authMode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
+              <button type="button" onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setAuthError(''); }}>
+                {authMode === 'login' ? 'Register' : 'Log in'}
+              </button>
+            </p>
+          </form>
+        </main>
+      )}
 
       {/* Footer */}
       <footer>

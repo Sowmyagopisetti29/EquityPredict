@@ -16,6 +16,8 @@ from sqlalchemy import (
     select,
     desc,
     insert,
+    inspect,
+    ForeignKey,
 )
 
 
@@ -54,11 +56,21 @@ else:
 # Define database table
 metadata = MetaData()
 
+users = Table(
+    "users",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("email", String(255), nullable=False, unique=True, index=True),
+    Column("password_hash", String(512), nullable=False),
+    Column("created_at", String(100), nullable=False),
+)
+
 prediction_history = Table(
     "prediction_history",
     metadata,
 
     Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_id", Integer, ForeignKey("users.id"), nullable=True, index=True),
     Column("stock", String(20), nullable=False),
     Column("latest_close", Float, nullable=False),
     Column("predicted_return_percent", Float, nullable=False),
@@ -77,10 +89,17 @@ def get_connection():
 # Create prediction history table
 def initialize_database():
     metadata.create_all(engine)
+    # Safely upgrade existing databases without deleting legacy history.
+    columns = {column["name"] for column in inspect(engine).get_columns("prediction_history")}
+    if "user_id" not in columns:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "ALTER TABLE prediction_history ADD COLUMN user_id INTEGER"
+            )
 
 
 # Save prediction results
-def save_prediction(result):
+def save_prediction(result, user_id):
 
     if not result or result.get("error"):
         return None
@@ -92,6 +111,7 @@ def save_prediction(result):
     created_at = datetime.now(timezone.utc).isoformat()
 
     statement = insert(prediction_history).values(
+        user_id=user_id,
         stock=result["stock"],
         latest_close=result["latest_close"],
         predicted_return_percent=result["predicted_return_percent"],
@@ -107,10 +127,11 @@ def save_prediction(result):
 
 
 # Retrieve recent prediction history
-def get_prediction_history(limit=50):
+def get_prediction_history(user_id, limit=50):
 
     statement = (
         select(prediction_history)
+        .where(prediction_history.c.user_id == user_id)
         .order_by(desc(prediction_history.c.id))
         .limit(limit)
     )
@@ -133,11 +154,12 @@ def get_prediction_history(limit=50):
 
 
 # Retrieve prediction history for one stock
-def get_stock_prediction_history(symbol, limit=50):
+def get_stock_prediction_history(user_id, symbol, limit=50):
 
     statement = (
         select(prediction_history)
         .where(
+            prediction_history.c.user_id == user_id,
             prediction_history.c.stock == symbol.strip().upper()
         )
         .order_by(desc(prediction_history.c.id))
@@ -159,3 +181,20 @@ def get_stock_prediction_history(symbol, limit=50):
             results.append(item)
 
         return results
+
+
+def create_user(email, password_hash):
+    with engine.begin() as connection:
+        result = connection.execute(insert(users).values(
+            email=email.strip().lower(),
+            password_hash=password_hash,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        ))
+        return result.inserted_primary_key[0]
+
+
+def get_user_by_email(email):
+    statement = select(users).where(users.c.email == email.strip().lower())
+    with engine.connect() as connection:
+        row = connection.execute(statement).mappings().first()
+        return dict(row) if row else None

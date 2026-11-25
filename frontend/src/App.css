@@ -1,4 +1,7 @@
-/* Global Styling */
+
+/* =================================
+   GLOBAL STYLING
+================================= */
 
 * {
   margin: 0;
@@ -16,7 +19,9 @@ body {
   min-height: 100vh;
 }
 
-/* Navigation Bar */
+/* =================================
+   NAVIGATION BAR
+================================= */
 
 .navbar {
   display: flex;
@@ -25,6 +30,8 @@ body {
   padding: 22px 8%;
   background: #111b2e;
   border-bottom: 1px solid #26334a;
+  gap: 15px;
+  flex-wrap: wrap;
 }
 
 .navbar h2 {
@@ -41,7 +48,34 @@ body {
   font-size: 14px;
 }
 
-/* Main Dashboard */
+.account-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.account-bar span {
+  color: #cbd5e1;
+  font-size: 14px;
+}
+
+.account-bar button {
+  padding: 9px 16px;
+  background: #1e293b;
+  color: #38bdf8;
+  border: 1px solid #334155;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.account-bar button:hover {
+  background: #263750;
+}
+
+/* =================================
+   MAIN DASHBOARD
+================================= */
 
 .dashboard {
   width: 84%;
@@ -49,7 +83,9 @@ body {
   margin: 55px auto;
 }
 
-/* Welcome Section */
+/* =================================
+   WELCOME SECTION
+================================= */
 
 .welcome {
   margin-bottom: 40px;
@@ -74,7 +110,9 @@ body {
   line-height: 1.6;
 }
 
-/* Search Sections */
+/* =================================
+   SEARCH SECTIONS
+================================= */
 
 .search-section,
 .multiple-section {
@@ -92,6 +130,7 @@ body {
   margin-bottom: 22px;
 }
 
+.search-section > p,
 .multiple-section > p {
   color: #94a3b8;
   margin-bottom: 20px;
@@ -148,7 +187,9 @@ body {
   font-size: 13px;
 }
 
-/* Single Stock Prediction Results */
+/* =================================
+   SINGLE STOCK PREDICTION RESULTS
+================================= */
 
 .results {
   margin-top: 35px;
@@ -197,7 +238,9 @@ body {
   font-weight: bold;
 }
 
-/* Historical Stock Chart */
+/* =================================
+   HISTORICAL STOCK CHART
+================================= */
 
 .chart-section {
   background: #111b2e;
@@ -218,7 +261,9 @@ body {
   margin-top: 25px;
 }
 
-/* Multiple Stock Comparison */
+/* =================================
+   MULTIPLE STOCK COMPARISON
+================================= */
 
 .multiple-section {
   margin-top: 40px;
@@ -234,7 +279,27 @@ body {
   color: #38bdf8;
 }
 
-/* Responsive Table Container */
+.best-stock-card {
+  background: #0b1120;
+  border: 1px solid #0284c7;
+  border-radius: 10px;
+  padding: 22px;
+  margin-top: 25px;
+}
+
+.best-stock-card h3 {
+  color: #38bdf8;
+  margin-bottom: 15px;
+}
+
+.best-stock-card p {
+  color: #cbd5e1;
+  margin-bottom: 10px;
+}
+
+/* =================================
+   RESPONSIVE TABLE CONTAINER
+================================= */
 
 .table-container {
   width: 100%;
@@ -243,7 +308,9 @@ body {
   border-radius: 10px;
 }
 
-/* Comparison Table */
+/* =================================
+   COMPARISON AND HISTORY TABLES
+================================= */
 
 .stock-table {
   width: 100%;
@@ -285,7 +352,9 @@ body {
   font-weight: bold;
 }
 
-/* Loading and Error Messages */
+/* =================================
+   LOADING AND ERROR MESSAGES
+================================= */
 
 .status {
   color: #38bdf8;
@@ -295,10 +364,132 @@ body {
 
 .error {
   color: #f87171;
-  margin: 20px 0;
+  margin: 12px 0;
+  line-height: 1.5;
 }
 
-/* Footer */
+/* =================================
+   AUTHENTICATION PAGE
+================================= */
+
+.auth-page {
+  min-height: 75vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 45px 20px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  background: #111b2e;
+  border: 1px solid #26334a;
+  border-radius: 16px;
+  padding: 38px;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.25);
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.auth-card h1 {
+  font-size: 28px;
+  color: #f1f5f9;
+  margin-bottom: 4px;
+}
+
+.auth-card > p:first-of-type {
+  color: #94a3b8;
+  font-size: 14px;
+  line-height: 1.7;
+  margin-bottom: 14px;
+}
+
+.auth-card label {
+  display: block;
+  color: #e2e8f0;
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 8px;
+  margin-bottom: -5px;
+}
+
+.auth-card input {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: 14px 15px;
+  background: #0b1120;
+  color: #f1f5f9;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  font-size: 15px;
+  outline: none;
+  margin-bottom: 7px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.auth-card input:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+}
+
+.auth-card input::placeholder {
+  color: #64748b;
+}
+
+.auth-card > button[type="submit"] {
+  width: 100%;
+  padding: 14px;
+  margin-top: 15px;
+  background: #0284c7;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.auth-card > button[type="submit"]:hover {
+  background: #0369a1;
+  transform: translateY(-2px);
+}
+
+.auth-card > button[type="submit"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.auth-card .auth-switch {
+  text-align: center;
+  color: #94a3b8;
+  font-size: 14px;
+  margin-top: 12px;
+  line-height: 1.6;
+}
+
+.auth-switch button {
+  background: none;
+  border: none;
+  color: #38bdf8;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: 4px;
+}
+
+.auth-switch button:hover {
+  text-decoration: underline;
+}
+
+/* =================================
+   FOOTER
+================================= */
 
 footer {
   margin-top: 65px;
@@ -310,7 +501,9 @@ footer {
   line-height: 2;
 }
 
-/* Mobile Responsive Design */
+/* =================================
+   MOBILE RESPONSIVE DESIGN
+================================= */
 
 @media (max-width: 650px) {
   .navbar {
@@ -363,5 +556,22 @@ footer {
   .stock-table td {
     padding: 14px 12px;
     font-size: 13px;
+  }
+
+  .auth-page {
+    min-height: 70vh;
+    padding: 30px 16px;
+  }
+
+  .auth-card {
+    padding: 28px 22px;
+  }
+
+  .auth-card h1 {
+    font-size: 24px;
+  }
+
+  .account-bar {
+    width: 100%;
   }
 }

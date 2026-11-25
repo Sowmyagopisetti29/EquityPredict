@@ -1,8 +1,10 @@
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
+import os, base64, hashlib, hmac, json, re, time
 import yfinance as yf
-import time
 from threading import Lock
 from copy import deepcopy
 
@@ -12,11 +14,66 @@ from database import (
     initialize_database,
     save_prediction,
     get_prediction_history,
-    get_stock_prediction_history
+    get_stock_prediction_history,
+    create_user,
+    get_user_by_email
 )
 
 
 app = FastAPI(title="EquityPredict")
+
+# Authentication uses a signed bearer token and PBKDF2 password hashing.
+AUTH_SECRET = os.getenv("AUTH_SECRET")
+if not AUTH_SECRET and os.getenv("RENDER"):
+    raise RuntimeError("AUTH_SECRET must be configured in the Render environment.")
+if not AUTH_SECRET:
+    # Local development fallback only. Set a strong AUTH_SECRET in production.
+    AUTH_SECRET = "local-development-only-change-this-secret"
+
+bearer_scheme = HTTPBearer(auto_error=False)
+
+class AuthPayload(BaseModel):
+    email: str
+    password: str
+
+def hash_password(password: str) -> str:
+    salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 310000)
+    return base64.urlsafe_b64encode(salt).decode() + "." + base64.urlsafe_b64encode(digest).decode()
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        salt_text, digest_text = stored_hash.split(".", 1)
+        salt = base64.urlsafe_b64decode(salt_text.encode())
+        expected = base64.urlsafe_b64decode(digest_text.encode())
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 310000)
+        return hmac.compare_digest(actual, expected)
+    except Exception:
+        return False
+
+def create_access_token(user_id: int) -> str:
+    payload = json.dumps({"sub": user_id, "exp": int(time.time()) + 60 * 60 * 24 * 7}, separators=(",", ":")).encode()
+    encoded = base64.urlsafe_b64encode(payload).decode().rstrip("=")
+    signature = hmac.new(AUTH_SECRET.encode(), encoded.encode(), hashlib.sha256).digest()
+    signed = base64.urlsafe_b64encode(signature).decode().rstrip("=")
+    return encoded + "." + signed
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
+    if not credentials or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Please log in to continue.")
+    try:
+        encoded, signature = credentials.credentials.split(".", 1)
+        expected = hmac.new(AUTH_SECRET.encode(), encoded.encode(), hashlib.sha256).digest()
+        supplied = base64.urlsafe_b64decode((signature + "=" * (-len(signature) % 4)).encode())
+        if not hmac.compare_digest(expected, supplied):
+            raise ValueError("Invalid signature")
+        payload = json.loads(base64.urlsafe_b64decode((encoded + "=" * (-len(encoded) % 4)).encode()))
+        if int(payload.get("exp", 0)) < int(time.time()):
+            raise ValueError("Expired token")
+        return {"id": int(payload["sub"])}
+    except Exception:
+        raise HTTPException(status_code=401, detail="Your session is invalid or expired. Please log in again.")
+
 
 
 # Initialize database when FastAPI starts
@@ -75,6 +132,32 @@ def get_cached_prediction(symbol: str):
 
         return result
 
+
+# Account registration and login
+@app.post("/auth/register")
+def register(payload: AuthPayload):
+    email = payload.email.strip().lower()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise HTTPException(status_code=400, detail="Enter a valid email address.")
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must contain at least 8 characters.")
+    if len(payload.password) > 128:
+        raise HTTPException(status_code=400, detail="Password is too long.")
+    if get_user_by_email(email):
+        raise HTTPException(status_code=409, detail="An account with this email already exists.")
+    user_id = create_user(email, hash_password(payload.password))
+    return {"access_token": create_access_token(user_id), "token_type": "bearer", "email": email}
+
+@app.post("/auth/login")
+def login(payload: AuthPayload):
+    user = get_user_by_email(payload.email)
+    if not user or not verify_password(payload.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Incorrect email or password.")
+    return {"access_token": create_access_token(user["id"]), "token_type": "bearer", "email": user["email"]}
+
+@app.get("/auth/me")
+def current_account(user=Depends(get_current_user)):
+    return {"user_id": user["id"]}
 
 # Home endpoint
 @app.get("/")
@@ -140,13 +223,13 @@ def get_stock_data(symbol: str):
 
 # Single stock price prediction endpoint
 @app.get("/predict/{symbol}")
-def predict_stock(symbol: str):
+def predict_stock(symbol: str, user=Depends(get_current_user)):
 
     try:
         result = get_cached_prediction(symbol)
 
         # Save successful prediction in database
-        save_prediction(result)
+        save_prediction(result, user["id"])
 
         return result
 
@@ -161,7 +244,7 @@ def predict_stock(symbol: str):
 
 # Multiple stock prediction endpoint
 @app.get("/predict-multiple")
-def predict_multiple_stocks(symbols: str):
+def predict_multiple_stocks(symbols: str, user=Depends(get_current_user)):
 
     stock_symbols = symbols.split(",")
 
@@ -178,7 +261,7 @@ def predict_multiple_stocks(symbols: str):
             result = get_cached_prediction(symbol)
 
             # Save successful prediction in database
-            save_prediction(result)
+            save_prediction(result, user["id"])
 
             results.append(result)
 
@@ -197,10 +280,11 @@ def predict_multiple_stocks(symbols: str):
 # Retrieve all prediction history
 @app.get("/predictions/history")
 def prediction_history(
-    limit: int = Query(default=50, ge=1, le=500)
+    limit: int = Query(default=50, ge=1, le=500),
+    user=Depends(get_current_user),
 ):
 
-    predictions = get_prediction_history(limit)
+    predictions = get_prediction_history(user["id"], limit)
 
     return {
         "total_records": len(predictions),
@@ -212,10 +296,12 @@ def prediction_history(
 @app.get("/predictions/history/{symbol}")
 def stock_prediction_history(
     symbol: str,
-    limit: int = Query(default=50, ge=1, le=500)
+    limit: int = Query(default=50, ge=1, le=500),
+    user=Depends(get_current_user),
 ):
 
     predictions = get_stock_prediction_history(
+        user["id"],
         symbol,
         limit
     )
